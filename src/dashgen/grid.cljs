@@ -1,14 +1,22 @@
 (ns dashgen.grid
   (:require [om.core :as om :include-macros true]
             [om.dom :as dom :include-macros true]
-            [dashgen.utils :refer [get-dates header-to-index-map filter-map index-of pretty-date]]))
+            [dashgen.utils :refer [get-dates header-to-index-map multi-nth
+                                   filter-map index-of pretty-date]]))
 
 (defn filter-tuples [filters headers]
-  (map (fn [{:keys [selected id]}] [(index-of id headers) selected]) filters))
+  (->> filters
+       (filter (fn [{:keys [selected id]}]
+                 (cond
+                   (= id "Limit") false
+                   (= selected "") false
+                   :else true)))
+       (map (fn [{:keys [selected id]}]
+              [(index-of id headers) selected]))))
 
 (defn filter-rows [header rows filters]
   (let [filter-map (filter-map filters)
-        tuples (vec (filter-tuples (butlast filters) header))
+        tuples (vec (filter-tuples filters header))
         limit (:selected (get filter-map "Limit" 10))
         filter-row? (fn [row index] ;ugly SoB needed to improve performances
                       (loop [index 0]
@@ -21,17 +29,17 @@
                       )]
     (take limit (filter filter-row? rows))))
 
-(defn get-rank-mapping [main-header header rows]
+(defn get-rank-mapping [primary-key header rows]
   (let [header-map (header-to-index-map header)
-        main-index (get header-map main-header)]
-    (zipmap (map #(nth %1 main-index) rows) (iterate inc 0))))
+        pk-indices (map header-map primary-key)]
+    (zipmap (map #(multi-nth %1 pk-indices) rows) (iterate inc 0))))
 
-(defn rank-diff [rows header main-header ref-ranks]
+(defn rank-diff [rows header primary-key ref-ranks]
   (let [header-map (header-to-index-map header)
-        main-index (get header-map main-header)
+        pk-indices (map header-map primary-key)
         rank (fn [base-rank row]
-               (let [main-field (get row main-index)
-                     ref-rank (get ref-ranks main-field)]
+               (let [pk-value (multi-nth row pk-indices)
+                     ref-rank (get ref-ranks pk-value)]
                  (cond
                    (= ref-rank nil) "warning"
                    (< base-rank ref-rank) "success"
@@ -71,24 +79,20 @@
      (apply dom/tbody nil (map grid-body-row rows ranking))
      (dom/tbody nil (grid-body-row-NA header)))))
 
-(defn grid-widget [{:keys [current-week past-week sort-options filter-options main-header header date-offset] :as input} owner]
+(defn grid-widget [{:keys [current-week past-week sort-options filter-options primary-key header date-offset] :as input} owner]
   (reify
     om/IRender
     (render [this]
       (let [current-filtered-rows (filter-rows header current-week filter-options)
             past-filtered-rows (filter-rows header past-week filter-options)
-            past-ranking (get-rank-mapping main-header header past-filtered-rows)]
+            past-ranking (get-rank-mapping primary-key header past-filtered-rows)
+            ranking-diff (rank-diff current-filtered-rows header primary-key past-ranking)]
         (dom/div nil
                  (date-label :current-week date-offset)
                  (legend)
                  (dom/table #js {:className "table table-hover table-condensed table-responsive"}
                             (grid-header header)
-                            (grid-body current-filtered-rows
-                                       header
-                                       (rank-diff current-filtered-rows
-                                                  header
-                                                  main-header
-                                                  past-ranking)))
+                            (grid-body current-filtered-rows header ranking-diff))
                  (date-label :past-week date-offset)
                  (dom/table #js {:className "table"}
                             (grid-header header)

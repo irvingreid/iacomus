@@ -7,6 +7,9 @@
 
 (enable-console-print!)
 
+(defn multi-nth [values indices]
+  (map (partial nth values) indices))
+
 (defn GET [url]
   (let [ch (chan 1)]
     (xhr/send url
@@ -57,7 +60,7 @@
       nil)))
 
 (defn coerce [value]
-  (let [num (js/parseInt value)]
+  (let [num (js/parseFloat value)]
     (if (js/isNaN num)
       value
       num)))
@@ -77,7 +80,9 @@
   (reduce conj (map-indexed (fn [idx in] {(:id in) (assoc in :index idx)}) filters)))
 
 (defn sort-array-by-index! [array index]
-  (let [sortfn (fn [a b] (- (aget b index) (aget a index)))]
+  (let [sortfn (fn [a b]
+                 (- (coerce (aget b index))
+                    (coerce (aget a index))))]
     (.sort array sortfn)))
 
 (defn sort-raw-data! [app data]
@@ -93,10 +98,12 @@
 
 (defn parse-csv [data]
   (try
-   (.toArrays (.-csv js/$) data)
-   (catch js/Error e
-     (println e)
-     [])))
+    (let [arrays (.toArrays (.-csv js/$) data)]
+      (.shift arrays)
+      arrays)
+    (catch js/Error e
+      (println e)
+      [])))
 
 (let [csv-store (atom {})]
   (defn load-csv [prefix date-key date-offset]
@@ -129,9 +136,9 @@
             config (try
                      (keywordize-keys (js->clj (.parse js/JSON data)))
                      (catch js/Error e
+                       (om/update! app :severe-error [e])
                        nil))]
-        (if (seq config)
-          (om/transact! app #(merge %1 config))
-          (om/update! app :severe-error [true])))
-      (om/update! app :severe-error [true]))))
+        (when (seq config)
+          (om/transact! app #(merge %1 config))))
+      (om/update! app :severe-error ["Configuration file is missing!"]))))
 
