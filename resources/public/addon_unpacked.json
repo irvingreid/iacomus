@@ -5,11 +5,11 @@
   },
   "filter-options": [
     {"id": "Application",
-     "values": ["Firefox", "Fennec"],
-     "selected": "Firefox"},
+     "values": ["", "Firefox", "Fennec"],
+     "selected": ""},
     {"id": "Platform",
-     "values": ["WINNT", "Linux", "Darwin", "Android"],
-     "selected": "WINNT"},
+     "values": ["", "WINNT", "Linux", "Darwin", "Android"],
+     "selected": ""},
     {"id": "Limit",
      "values": [10, 20, 50],
      "selected": 10}
